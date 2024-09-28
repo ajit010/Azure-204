@@ -1,0 +1,230 @@
+Here’s a step-by-step guide to create and run everything directly on the Azure Portal without any local machine development. 
+We will create a POST API to store student information and a GET API to retrieve it, all within the Azure Portal.
+
+>> Step 1: Create an Azure SQL Database
+
+- Log into Azure Portal: Go to the Azure Portal.
+
+- Create SQL Database:
+
+- In the search bar, type SQL Database and select it.
+
+- Click + Create.
+
+- Fill in the details:
+
+Subscription: Choose your subscription.
+Resource Group: Create a new one or select an existing one.
+Database Name: (e.g., StudentDB).
+Server: Click on Create new:
+Server Name: Provide a unique name.
+Admin Login: Set an admin username and password.
+Location: Choose a region.
+Click Review + Create, then Create.
+
+
+>> Create a Table:
+
+- Navigate to your SQL database after it’s created.
+
+- Click on Query editor (preview) on the left side.
+
+- Log in using the SQL admin credentials you created.
+
+- Run the following SQL command to create a table:
+
+CREATE TABLE Students (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    Name NVARCHAR(100),
+    Email NVARCHAR(100),
+    PhoneNumber NVARCHAR(15)
+);
+
+
+>> Step 2: Create an Azure Function App
+
+- Create a Function App:
+
+- In the search bar, type Function App and select it.
+
+- Click + Create.
+
+- Fill in the required details:
+
+Subscription: Your subscription.
+Resource Group: Same as your SQL Database or create a new one.
+Function App Name: A unique name (e.g., StudentFunctionApp).
+Runtime Stack: Choose Python.
+Version: Select 3.10.
+Region: Same region as your SQL Database.
+
+- Click Review + Create, then Create.
+
+
+>> Step 3: Create HTTP Trigger Function
+
+- Go to Your Function App:
+
+- Navigate to your newly created Function App.
+
+- In the left menu, click on Functions.
+
+- Click + Add and select HTTP trigger.
+
+
+>> Configure the Function:
+
+- Name your function (e.g., StudentFunction).
+
+- Select Authorization Level: Function (for testing purposes).
+                                        
+- Click Add.
+
+                                        
+>> Step 4: Write the Code for POST and GET APIs
+                                        
+- Access the Function Code:
+
+- Click on your newly created function (StudentFunction).
+                                        
+- Select Code + Test.
+
+                                        
+>> Write the POST API Code:
+
+- Replace the existing code with the following:
+
+
+import logging
+import azure.functions as func
+import pyodbc
+import json
+
+def get_db_connection():
+    server = 'YOUR_SERVER.database.windows.net'  # Update with your server
+    database = 'StudentDB'  # Your database name
+    username = 'YOUR_USERNAME'  # Your SQL admin username
+    password = 'YOUR_PASSWORD'  # Your SQL admin password
+    driver = '{ODBC Driver 17 for SQL Server}'
+    connection_string = f"Driver={driver};Server={server};Database={database};UID={username};PWD={password};"
+    return pyodbc.connect(connection_string)
+
+def main(req: func.HttpRequest) -> func.HttpResponse:
+    logging.info('Request received for Student API.')
+
+    if req.method == "POST":
+        try:
+            req_body = req.get_json()
+            name = req_body.get('name')
+            email = req_body.get('email')
+            phone_number = req_body.get('phone_number')
+
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO Students (Name, Email, PhoneNumber) VALUES (?, ?, ?)", 
+                           (name, email, phone_number))
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            return func.HttpResponse(f"Student {name} added successfully.", status_code=201)
+
+        except ValueError:
+            return func.HttpResponse("Invalid input.", status_code=400)
+        except Exception as e:
+            logging.error(f"Error: {str(e)}")
+            return func.HttpResponse("An error occurred.", status_code=500)
+
+    elif req.method == "GET":
+        id = req.params.get('id')
+
+        if not id:
+            return func.HttpResponse("Please provide a student ID.", status_code=400)
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM Students WHERE Id = ?", (id,))
+            row = cursor.fetchone()
+            conn.close()
+
+            if row:
+                student = {
+                    "Id": row[0],
+                    "Name": row[1],
+                    "Email": row[2],
+                    "PhoneNumber": row[3]
+                }
+                return func.HttpResponse(json.dumps(student), mimetype="application/json", status_code=200)
+            else:
+                return func.HttpResponse("Student not found.", status_code=404)
+
+        except Exception as e:
+            logging.error(f"Error: {str(e)}")
+            return func.HttpResponse("An error occurred.", status_code=500)
+
+                                        
+>> Step 5: Configure Application Settings for Database Connection
+                                        
+Go to Configuration:
+
+In your Function App, navigate to Configuration under Settings.
+
+Click + New application setting to add your SQL connection settings:
+
+Name: DB_SERVER, Value: YOUR_SERVER.database.windows.net
+
+Name: DB_NAME, Value: StudentDB
+
+Name: DB_USERNAME, Value: YOUR_USERNAME
+
+Name: DB_PASSWORD, Value: YOUR_PASSWORD
+
+(Replace the placeholders with your actual values.)
+
+>> Update the Connection Code: In the get_db_connection() function, replace the hardcoded values with these application settings:
+
+
+import os
+
+def get_db_connection():
+    server = os.environ['DB_SERVER']
+    database = os.environ['DB_NAME']
+    username = os.environ['DB_USERNAME']
+    password = os.environ['DB_PASSWORD']
+    driver = '{ODBC Driver 17 for SQL Server}'
+    connection_string = f"Driver={driver};Server={server};Database={database};UID={username};PWD={password};"
+    return pyodbc.connect(connection_string)
+
+                                        
+>> Step 6: Test the APIs
+                                        
+Get the Function URL:
+
+In the Function App, click on your function (StudentFunction).
+                                        
+Copy the Function URL from the top right corner.
+                                        
+>> Test the POST API:
+
+Use a tool like Postman or the Azure Portal Test feature.
+Method: POST
+URL: <your-function-url>
+                                        
+Body (JSON):
+
+{
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "phone_number": "1234567890"
+}
+                                        
+Test the GET API:
+
+To fetch a student, send a GET request:
+Method: GET
+URL: <your-function-url>?id=<student-id>
+
+                                        
+Conclusion
+You have successfully created and deployed a REST API directly on Azure Portal to manage student information using Azure Functions and Azure SQL Database. You can now store and retrieve student data through your API!
